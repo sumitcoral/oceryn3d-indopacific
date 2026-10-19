@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -N ip_cache
+#PBS -P 11003571
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=32gb
+#PBS -l walltime=06:00:00
+#PBS -k oed
+#PBS -j oe
+#PBS -o logs/
+#PBS -J 1993-2023
+###############################################################################
+# Stage 5: fp16 day cache (src/build_cache.py), one array task per year.
+# ~257 MB per day at 1/12 deg, ~94 GB per year. Idempotent: rerun to fill gaps.
+#   mkdir -p logs && qsub scripts/05_build_cache_array.pbs
+#   qsub -J 2020-2023 scripts/05_build_cache_array.pbs        # a range of years
+#   qsub -v OVERWRITE=1 scripts/05_build_cache_array.pbs      # after new stats.json
+#   qsub -v VERIFY=1 scripts/05_build_cache_array.pbs         # check, do not build
+# PBS refuses a single-index array (-J 2000-2000): run one year directly with
+#   python src/build_cache.py --config config/default.yaml --year 2000
+###############################################################################
+set -uo pipefail
+cd "${PBS_O_WORKDIR:-.}"
+source scripts/env_nscc.sh
+export PYTHONUNBUFFERED=1
+CONFIG="${CONFIG:-config/default.yaml}"
+Y="${PBS_ARRAY_INDEX:?run as a PBS array (-J)}"
+EXTRA=""
+[ "${OVERWRITE:-0}" = "1" ] && EXTRA="--overwrite"
+[ "${VERIFY:-0}" = "1" ] && EXTRA="--verify"
+python src/build_cache.py --config "${CONFIG}" --year "${Y}" ${EXTRA}

@@ -1,0 +1,23 @@
+#!/bin/bash
+#PBS -N ip_eval
+#PBS -P 11003571
+#PBS -q normal
+#PBS -l select=1:ngpus=1:ncpus=8:mem=64gb
+#PBS -l walltime=08:00:00
+#PBS -k oed
+#PBS -j oe
+#PBS -o logs/
+###############################################################################
+# Stage 7: full-domain rollout evaluation (src/evaluate.py), output next to
+# the checkpoint. Forcing of later days: true (ERA5), persist (no forecast) or
+# blend:A.
+#   qsub -v CKPT=<run>/best.pt scripts/07_evaluate.pbs
+#   qsub -v CKPT=<run>/best.pt,NEXT=persist,SPLIT=val,FRAC=0.25 scripts/07_evaluate.pbs
+###############################################################################
+set -uo pipefail
+cd "${PBS_O_WORKDIR:-.}"
+source scripts/env_nscc.sh
+export PYTHONUNBUFFERED=1
+: "${CKPT:?pass -v CKPT=<checkpoint>}"
+python src/evaluate.py --checkpoint "${CKPT}" --split "${SPLIT:-test}" \
+    --lead "${LEAD:-5}" --days-frac "${FRAC:-1.0}" --next-forcing "${NEXT:-true}"

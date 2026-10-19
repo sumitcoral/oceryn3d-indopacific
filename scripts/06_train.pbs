@@ -1,0 +1,39 @@
+#!/bin/bash
+#PBS -N ip_train
+#PBS -P 11003571
+#PBS -q normal
+#PBS -l select=1:ngpus=1:ncpus=16:mem=110gb
+#PBS -l walltime=120:00:00
+#PBS -k oed
+#PBS -j oe
+#PBS -o logs/
+###############################################################################
+# Stage 6: training. 6a one-day model (config/default.yaml), then 6b rollout
+# fine-tuning to day 5 (config/rollout5.yaml, starts from 6a's best.pt).
+#   mkdir -p logs
+#   qsub -l walltime=02:00:00 -v SMOKE=1 scripts/06_train.pbs          # smoke first
+#   qsub scripts/06_train.pbs                                          # 6a
+#   qsub -v CONFIG=config/rollout5.yaml scripts/06_train.pbs           # 6b
+#   qsub -v CONFIG=config/proto_quarter.yaml scripts/06_train.pbs      # 1/4 deg prototype
+# ngpus is mandatory: every GPU queue defaults to 0 GPUs (train.py exits
+# without CUDA). Submit to `normal`; PBS routes by ngpus + walltime (glong
+# for up to 120 h, gdev for the 2 h smoke). Resumes from out_dir/last.pt.
+###############################################################################
+set -uo pipefail
+cd "${PBS_O_WORKDIR:-.}"
+source scripts/env_nscc.sh
+export PYTHONPATH="${PBS_O_WORKDIR:-$PWD}/src:${PYTHONPATH:-}"
+export PYTHONUNBUFFERED=1
+CONFIG="${CONFIG:-config/default.yaml}"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
+if [ "${SMOKE:-0}" = "1" ]; then
+    python src/train.py --config "${CONFIG}" --smoke --no-resume
+    rc=$?
+    [ $rc -ne 0 ] && { echo "=== SMOKE FAILED (exit $rc) ==="; exit $rc; }
+    echo "=== smoke ok; resubmit without SMOKE=1 ==="
+    exit 0
+fi
+python src/train.py --config "${CONFIG}"
+rc=$?
+echo "Finished: $(date) (exit $rc)"
+exit $rc

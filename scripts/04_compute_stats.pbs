@@ -1,0 +1,23 @@
+#!/bin/bash
+#PBS -N ip_stats
+#PBS -P 11003571
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=48gb
+#PBS -l walltime=08:00:00
+#PBS -k oed
+#PBS -j oe
+#PBS -o logs/
+###############################################################################
+# Stage 4: normalization statistics (src/compute_stats.py), train years,
+# every 5th day. Needs meta/days.csv (Stage 2) and static_fields.npz (Stage 3),
+# both built on the login node in seconds:
+#   python src/build_index.py  --config config/default.yaml
+#   python src/build_static.py --config config/default.yaml
+#   mkdir -p logs && qsub scripts/04_compute_stats.pbs
+###############################################################################
+set -uo pipefail
+cd "${PBS_O_WORKDIR:-.}"
+source scripts/env_nscc.sh
+export PYTHONUNBUFFERED=1
+CONFIG="${CONFIG:-config/default.yaml}"
+python src/compute_stats.py --config "${CONFIG}" --stride "${STRIDE:-5}"

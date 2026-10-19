@@ -1,0 +1,204 @@
+# =============================================================================
+# Oceryn3D Indo-Pacific - central configuration
+#
+# Every stage reads this file through src/config.py (load_config). Another
+# config may start with `base: default.yaml` and override only what differs
+# (proto_quarter.yaml, rollout5.yaml): keys merge recursively, lists replace.
+# Key names are the ones the code reads. Grep before renaming one.
+#
+# ---------------------------------------------------------------------------
+# CONTRACT - asserted at runtime by config.Cfg.validate() and the model.
+# Same rules as ocean-emulator (Oceryn3D Global), plus forcing at t+1.
+# ---------------------------------------------------------------------------
+#  C1  vars3d LEADS with the 3D targets and vars2d with the 2D targets, in
+#      target_vars order, and target_vars lists 3D before 2D. The model is
+#      residual (out = delta + x[:, :out_ch]), so the first out_ch input
+#      channels must be exactly the targets at day t.
+#  C2  model.in_ch == len(vars3d)*n_levels + len(vars2d) + n_levels (depth
+#      encoding) + 8 static channels + len(forcing_next)
+#        = 4*24 + 3 + 24 + 8 + 2 = 133
+#  C3  model.out_ch == len(3D targets)*n_levels + len(2D targets) = 97
+#  C4  len(grid.depth_m) == grid.n_levels
+# =============================================================================
+
+paths:
+  # All absolute: PBS jobs start in $HOME. Nothing here exists until the
+  # download scripts and Stage 1-5 have run on NSCC.
+  root:        /data/projects/11003571/sumit/work/indopacific
+  glorys_dir:  /data/projects/11003571/sumit/work/indopacific/GLORYS12      # monthly .nc
+  era5_dir:    /data/projects/11003571/sumit/work/indopacific/ERA5          # monthly .nc
+  forcing_dir: /data/projects/11003571/sumit/work/indopacific/forcing       # monthly .npy
+  cache_dir:   /data/projects/11003571/sumit/work/indopacific/cache         # daily fp16 .npy
+  meta_dir:    /data/projects/11003571/sumit/work/indopacific/meta
+  days_csv:    /data/projects/11003571/sumit/work/indopacific/meta/days.csv
+  stats_json:  /data/projects/11003571/sumit/work/indopacific/meta/stats.json
+  static_npz:  /data/projects/11003571/sumit/work/indopacific/meta/static_fields.npz
+  # GLORYS12 static file (deptho), optional: bathymetry falls back to the depth
+  # of the deepest valid level when it is absent.
+  glorys_static_nc: /data/projects/11003571/sumit/work/indopacific/GLORYS12/glorys12_static.nc
+  out_dir:     /data/projects/11003571/sumit/work/indopacific/runs/ip_daily_v1
+
+grid:
+  # The model grid is GLORYS12's own 1/12 deg grid cut to the domain: no
+  # horizontal regridding of the ocean fields. GLORYS12 longitudes are
+  # -180 + k/12 and latitudes -80 + k/12 (cell centres), so 30E and 30S are
+  # exact grid points: 30 = -180 + 2520/12, -30 = -80 + 600/12.
+  # Domain 30E..179.917E x 30S..29.917N: 1800 x 720 cells. It stops short of
+  # 180E so the domain never crosses the date line (no wrap anywhere).
+  lon0: 30.0
+  lat0: -30.0
+  dlon: 0.0833333333333333
+  dlat: 0.0833333333333333
+  width: 1800
+  height: 720
+  # Block-average the 1/12 deg fields by this factor at read time (NaN-aware;
+  # a coarse cell is ocean when at least half its fine cells are). 1 = native.
+  # proto_quarter.yaml sets 3 for the 1/4 deg prototype (roadmap Phase 1 step 1).
+  coarsen: 1
+  # 24 of GLORYS12's 50 levels, surface to 1062 m: every other level in the
+  # top 40 m, then all levels to 541 m, then 763 m and 1062 m. Same count as
+  # Oceryn3D Global, so the channel layout matches (C2). Selected BY DEPTH,
+  # not by index: download_glorys.py and glorys_io.py pick the nearest
+  # GLORYS level and refuse a mismatch over 1%, so a wrong value here fails
+  # loudly on the first file instead of silently shifting levels.
+  n_levels: 24
+  depth_m: [   0.494025,   2.645669,   5.078224,   7.92956,   11.405,
+              15.81007,   21.59882,   29.44473,   40.34405,   55.76429,
+              77.85385,   92.32607,  109.7293,   130.666,    155.8507,
+             186.1256,   222.4752,   266.0403,   318.1274,   380.213,
+             453.9377,   541.0889,   763.3331,  1062.44 ]
+
+variables:
+  # Model names -> GLORYS12 names. thetao is potential temperature (degC),
+  # so practical salinity (psu), uo/vo m/s, zos sea surface height (m).
+  glorys_names: {u: uo, v: vo, temp: thetao, salt: so, ssh: zos}
+  vars3d: [u, v, temp, salt]
+  # ssh first: it is a target and must sit at channel 96, inside the residual
+  # prefix (C1). taux/tauy are ERA5 surface stress (N/m2), daily means.
+  vars2d: [ssh, taux, tauy]
+  target_vars: [u, v, temp, salt, ssh]
+  # Forcing of the TARGET day (t+1) appended last as extra inputs. Required
+  # for a daily step: a day's currents respond to that day's wind. In
+  # operation it comes from a wind forecast (ECMWF), so evaluate.py also runs
+  # with --next-forcing persist|blend:A. Lesson from Oceryn3D Global (J3,
+  # Oct 2026): a model trained on perfect future stress lost to a no-forecast
+  # model when fed a real forecast, partly through sub-degree stress
+  # structure a forecast cannot give. forcing_next_smooth_deg box-smooths the
+  # t+1 forcing in training and evaluation alike; 0 = off.
+  forcing_next: [taux, tauy]
+  forcing_next_smooth_deg: 0
+  # The per-level ocean mask is the intersection of these fields' valid cells.
+  mask_vars: [temp, u, v]
+
+forcing:
+  # ERA5 daily means of the hourly "mean turbulent surface stress" fields
+  # (N/m2, positive eastward/northward = stress on the ocean). Downloaded by
+  # scripts/download_era5.py, regridded by src/build_forcing.py.
+  era5_variables:
+    taux: mean_eastward_turbulent_surface_stress
+    tauy: mean_northward_turbulent_surface_stress
+  # Names the variables may carry inside the downloaded netCDF (the CDS has
+  # renamed them over time); build_forcing.py takes the first one present.
+  era5_netcdf_names:
+    taux: [avg_iews, metss, iews, mean_eastward_turbulent_surface_stress]
+    tauy: [avg_inss, mntss, inss, mean_northward_turbulent_surface_stress]
+  # ERA5 is downloaded on its 0.25 deg grid over the domain plus this margin
+  # (deg), so bilinear interpolation never extrapolates at the edges.
+  margin_deg: 1.0
+
+download:
+  # GLORYS12V1 daily means. The reanalysis ("my") ends mid-2021; the interim
+  # continuation ("myint") is the same system run forward. Each date is
+  # fetched from the first entry whose range covers it. Check the end dates
+  # on the Copernicus Marine catalogue if a download reports missing days.
+  glorys_datasets:
+    - {id: cmems_mod_glo_phy_my_0.083deg_P1D-m,    start: "1993-01-01", end: "2021-06-30"}
+    - {id: cmems_mod_glo_phy_myint_0.083deg_P1D-m, start: "2021-07-01", end: "2023-12-31"}
+  glorys_static_dataset: cmems_mod_glo_phy_my_0.083deg_static
+  # Raw files are written as int16 with these scale factors (zlib): 1 mm/s,
+  # 0.001 degC, 0.001 psu, 1 mm. About half the size of float32 and far below
+  # the model's error; the offsets keep every value inside +-32 units.
+  pack: {u: [0.001, 0.0], v: [0.001, 0.0], temp: [0.001, 15.0],
+         salt: [0.001, 30.0], ssh: [0.001, 0.0]}
+  era5_dataset: derived-era5-single-levels-daily-statistics
+
+data:
+  year_start: 1993
+  year_end: 2023
+  # By year. A sample is a run of horizon+1 consecutive days inside ONE
+  # split; runs that straddle a boundary are dropped. Stats use train only.
+  splits:
+    train: [1993, 2016]
+    val:   [2017, 2019]
+    test:  [2020, 2023]
+  # Dates never used as samples (corrupt or missing at source). Empty until
+  # a data scan finds some.
+  skip_dates: []
+
+dataset:
+  patch: 256
+  stride: 224            # 4 x 8 = 32 origins on 720 x 1800
+  land_frac_max: 0.9     # skip patches with < 10% ocean
+  depth_encoding: true
+  static_channels: [land_mask, bathymetry, sin_lat, cos_lat,
+                    sin_lon, cos_lon, sin_doy, cos_doy]
+  # Open boundaries: the domain's edges have no information about what flows
+  # in, so errors grow inward from them with lead time. The loss and every
+  # score ignore this many cells next to the domain edge (24 = 2 deg at
+  # 1/12 deg). Boundary values from an outer model (GLO12) are a later step.
+  edge_margin_px: 24
+  # Model steps per sample. 1 = one-day training (Stage 6a); rollout5.yaml
+  # sets 5 for rollout fine-tuning to day 5 (Stage 6b).
+  horizon: 1
+  cache:
+    enabled: true
+    # Each worker holds this many sample windows (each up to horizon+1 days,
+    # memory-mapped fp16 stacks of ~0.26 GB). See dataset.projected_ram_gb.
+    shuffle_windows: 4
+
+model:
+  in_ch: 133             # C2: 4*24 + 3 + 24 + 8 + 2
+  out_ch: 97             # C3: 4*24 + 1
+  base: 64               # same U-Net as Oceryn3D Global (13.4 M parameters)
+  residual: true
+
+loss:
+  w_data: 1.0
+  # Currents are the product: temp/salt z-scored like u/v would otherwise
+  # take half the loss. Same weights as Oceryn3D Global.
+  var_weights: {u: 1.0, v: 1.0, temp: 0.25, salt: 0.25, ssh: 1.0}
+  # Weight of each rollout step in the loss (normalized to sum 1). Missing
+  # or shorter than the horizon -> equal weights.
+  lead_weights: []
+
+train:
+  batch_size: 8
+  num_workers: 12
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  epochs: 60
+  warmup_steps: 500
+  amp: true
+  # Share of training start days drawn each epoch (a new draw each epoch).
+  days_per_epoch_frac: 0.25
+  # Workers get runs of this many consecutive start days, so consecutive
+  # windows share their memory-mapped day stacks.
+  day_block: 8
+  val_days_frac: 0.1
+  log_every: 200
+  # Fine-tuning starts from this checkpoint's weights (rollout5.yaml points
+  # it at the one-day model's best.pt). Empty = train from scratch.
+  init_from: ""
+  require_cuda: true
+
+evaluate:
+  # Full-domain rollouts, tiled like training patches and blended, so a
+  # forecast's information crosses patch borders between steps.
+  tile: 256
+  tile_stride: 192
+  # Regions for the scores, [lon_min, lon_max, lat_min, lat_max] in deg.
+  regions:
+    domain:        [30.0, 180.0, -30.0, 30.0]
+    se_asia:       [90.0, 130.0, -10.0, 25.0]
+    malacca_singapore: [95.0, 106.0, -1.0, 8.0]
+    south_china_sea:   [105.0, 121.0, 3.0, 23.0]

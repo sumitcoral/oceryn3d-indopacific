@@ -1,0 +1,29 @@
+# 1/4 deg prototype (roadmap Phase 1 step 1): the same pipeline on GLORYS12
+# block-averaged 3 x 3, i.e. 240 x 600 cells. Cheap to debug masks,
+# normalization and the wind inputs before the 1/12 deg runs. Reads the same
+# raw GLORYS12 and ERA5 downloads; writes its own forcing, meta, cache and runs.
+base: default.yaml
+
+paths:
+  forcing_dir: /data/projects/11003571/sumit/work/indopacific/q4/forcing
+  cache_dir:   /data/projects/11003571/sumit/work/indopacific/q4/cache
+  meta_dir:    /data/projects/11003571/sumit/work/indopacific/q4/meta
+  days_csv:    /data/projects/11003571/sumit/work/indopacific/q4/meta/days.csv
+  stats_json:  /data/projects/11003571/sumit/work/indopacific/q4/meta/stats.json
+  static_npz:  /data/projects/11003571/sumit/work/indopacific/q4/meta/static_fields.npz
+  out_dir:     /data/projects/11003571/sumit/work/indopacific/q4/runs/ip_q4_v1
+
+grid:
+  # Coarse-cell centres: the first 3 x 3 block spans 30.0..30.1667 E, so its
+  # centre is 30 + 1/12 E (lat likewise). build_static.py records the coarse
+  # axes; lon0/lat0 here describe the NATIVE grid the blocks are cut from.
+  coarsen: 3
+
+dataset:
+  patch: 128
+  stride: 112
+  edge_margin_px: 8      # 2 deg at 1/4 deg
+
+evaluate:
+  tile: 128
+  tile_stride: 96

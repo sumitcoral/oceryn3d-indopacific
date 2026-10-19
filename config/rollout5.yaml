@@ -1,0 +1,22 @@
+# Stage 6b: rollout fine-tuning to day 5. Starts from the one-day model
+# (Stage 6a, default.yaml) and trains on 5-step autoregressive rollouts: the
+# model's own day-k forecast is its input for day k+1, and the loss covers
+# all five days. Lower learning rate, fewer epochs.
+base: default.yaml
+
+paths:
+  out_dir: /data/projects/11003571/sumit/work/indopacific/runs/ip_rollout5_v1
+
+dataset:
+  horizon: 5
+  cache:
+    shuffle_windows: 3
+
+train:
+  init_from: /data/projects/11003571/sumit/work/indopacific/runs/ip_daily_v1/best.pt
+  lr: 5.0e-5
+  epochs: 20
+  warmup_steps: 200
+  # Five forward passes per sample: halve the batch to keep activations in
+  # the A100's 40 GB with headroom.
+  batch_size: 4

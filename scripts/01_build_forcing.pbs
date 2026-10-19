@@ -1,0 +1,21 @@
+#!/bin/bash
+#PBS -N ip_forcing
+#PBS -P 11003571
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=32gb
+#PBS -l walltime=06:00:00
+#PBS -k oed
+#PBS -j oe
+#PBS -o logs/
+###############################################################################
+# Stage 1: ERA5 daily stress -> model grid (src/build_forcing.py), all months
+# present under paths.era5_dir. Skips months already built.
+#   mkdir -p logs && qsub scripts/01_build_forcing.pbs
+#   qsub -v CONFIG=config/proto_quarter.yaml scripts/01_build_forcing.pbs
+###############################################################################
+set -uo pipefail
+cd "${PBS_O_WORKDIR:-.}"
+source scripts/env_nscc.sh
+export PYTHONUNBUFFERED=1
+CONFIG="${CONFIG:-config/default.yaml}"
+python src/build_forcing.py --config "${CONFIG}"
