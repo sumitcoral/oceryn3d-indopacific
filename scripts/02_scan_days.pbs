@@ -1,0 +1,25 @@
+#!/bin/bash
+#PBS -N ip_scan
+#PBS -P 11003571
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=16gb
+#PBS -l walltime=10:00:00
+#PBS -k oed
+#PBS -j oe
+#PBS -o logs/
+###############################################################################
+# Data QC of the raw GLORYS12 days (src/scan_days.py): repeated, interpolated
+# and jump days, a 7-day assimilation rhythm, and the shift at the
+# reanalysis -> interim switch (July 2021). Reads only the surface and ~130 m,
+# so it can run as soon as the downloads finish, before the cache.
+#   mkdir -p logs && qsub scripts/02_scan_days.pbs
+# Output: meta/scan_days.json (summary, flagged dates) and scan_days.csv.
+# Real errors among the flagged dates go into data.skip_dates (then rerun
+# build_index.py).
+###############################################################################
+set -uo pipefail
+cd "${PBS_O_WORKDIR:-.}"
+source scripts/env_nscc.sh
+export PYTHONUNBUFFERED=1
+CONFIG="${CONFIG:-config/default.yaml}"
+python src/scan_days.py --config "${CONFIG}"

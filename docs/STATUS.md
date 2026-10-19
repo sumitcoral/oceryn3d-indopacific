@@ -6,7 +6,7 @@ _Last updated: 19 Oct 2026._
 
 The full Phase 1 core (roadmap steps 1–2): download scripts, Stages 1–7, the
 1/4° prototype and 5-day rollout configs, PBS jobs and tests. Nothing has run
-on real data yet. The test suite (`python -m pytest -q`, 26 tests) runs every
+on real data yet. The test suite (`python -m pytest -q`, 30 tests) runs every
 stage, training and evaluation on synthetic GLORYS12/ERA5 files and passes.
 
 ## Next steps (all on NSCC, submitted by the user)
@@ -24,12 +24,25 @@ stage, training and evaluation on synthetic GLORYS12/ERA5 files and passes.
    tell Claude what the CDS form calls it.
 3. **Full downloads** with `nohup` (resumable; rerun to fill failures).
    Check disk first: ~1–2 TB of GLORYS12 + ~2.9 TB of 1/12° cache.
-4. **1/4° prototype end to end**: Stages 1–7 with
+4. **QC scan of the raw days** (`qsub scripts/02_scan_days.pbs`, after the
+   GLORYS12 download): read `meta/scan_days.json`. Put real errors into
+   `data.skip_dates`. A strong 7-day rhythm (power ratio well above 8) means
+   the assimilation cycle is visible in the daily changes; note it before
+   training, since the model will partly learn it. A large shift at the
+   July 2021 switch means the test years mix two systems.
+5. **1/4° prototype end to end**: Stages 1–7 with
    `--config config/proto_quarter.yaml` (`-v CONFIG=...` for PBS jobs).
-5. **1/12° runs**: Stages 1–5 with `default.yaml`, then 6a, 6b and 7, with
+6. **1/12° runs**: Stages 1–5 with `default.yaml`, then 6a, 6b and 7, with
    `NEXT=persist` as well as the default.
 
 ## Open questions
+
+- Was GLORYS12V1 forced by ERA-Interim for its early years and ERA5 later?
+  Check the product user manual. If so, the ERA5 stress used here is not
+  exactly what the GLORYS12 ocean felt before the switch.
+- Starting operational forecasts from the GLO12 analysis (not GLORYS12):
+  compare the two over 2022-2023 and test the model from GLO12 states before
+  trusting the daily chain.
 
 - Dataset IDs and end dates of GLORYS12 (`download.glorys_datasets`):
   check against the Copernicus Marine catalogue at the first download.

@@ -6,6 +6,10 @@ GLORYS12's 1/12° grid over **30°E–180°E × 30°S–30°N** (720 × 1800 cel
 It steps the ocean **one day at a time** and is fine-tuned on 5-day rollouts,
 so it forecasts each of the next five days. It is trained on the GLORYS12V1
 daily reanalysis (Mercator, 1993–) and forced by ERA5 daily-mean wind stress.
+It is a **forecast model only**: today's 3D state, its starting point, comes
+from Mercator's analysis (GLORYS12 in training and testing, the operational
+GLO12 analysis in a daily service), which already combines the observations.
+Unlike Oceryn3D Global, it has no nowcast model of its own.
 
 It is the regional sibling of **Oceryn3D Global**
 ([ocean-nowcast](https://github.com/sumitcoral/ocean-nowcast) +
@@ -28,6 +32,7 @@ Every stage takes `--config`.
 | 0a download GLORYS12 | `python scripts/download_glorys.py --config config/default.yaml --static` | login node (internet), `nohup`, resumable | `GLORYS12/YYYY/glorys12_YYYY_MM.nc` (int16), `glorys12_static.nc` |
 | 0b download ERA5 | `python scripts/download_era5.py --config config/default.yaml` | login node (internet), resumable | `ERA5/YYYY/era5_stress_YYYY_MM.nc` |
 | 1 forcing | `qsub scripts/01_build_forcing.pbs` | PBS CPU | `forcing/YYYY/forcing_YYYY_MM.npy` (+ `.json`) |
+| QC scan | `qsub scripts/02_scan_days.pbs` | PBS CPU, ~3 h | `meta/scan_days.json`, `.csv`: repeated, interpolated and jump days, 7-day assimilation rhythm, shift at the July 2021 dataset switch |
 | 2 day index | `python src/build_index.py --config …` | login node, seconds | `meta/days.csv` |
 | 3 static fields | `python src/build_static.py --config …` | login node, a minute | `meta/static_fields.npz` |
 | 4 stats | `qsub scripts/04_compute_stats.pbs` | PBS CPU | `meta/stats.json` |

@@ -26,6 +26,18 @@ Singapore and Malacca straits at 1–5 days, a forecast in minutes).
 - Raw files are stored as **int16** with fixed scale factors (1 mm/s,
   0.001 °C, 0.001 psu, 1 mm): half of float32 and far below model error.
 
+- **No nowcast model**: the starting state is Mercator's analysis (GLORYS12
+  in training, GLO12 in operation), which already assimilates satellite and
+  in-situ observations. Oceryn3D Global needs its own nowcast because SODA4
+  is not produced in real time. The cost is dependence on Mercator, and a
+  shift between GLORYS12 (training) and GLO12 (operation) that must be
+  measured before the daily chain is trusted. A regional nowcast (satellite
+  surface fields to 3D, like ocean-nowcast) is an option for later.
+- **Data QC before training** (`src/scan_days.py`): repeated, interpolated
+  and jump days, the weekly assimilation rhythm in the daily changes, and
+  the shift at the reanalysis -> interim switch in July 2021, which falls in
+  the test years.
+
 ## Grid and domain
 
 - **No horizontal regridding of the ocean fields**: the model grid is

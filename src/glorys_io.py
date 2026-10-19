@@ -88,16 +88,17 @@ class GlorysMonth:
     def __exit__(self, *a):
         self.close()
 
-    def _read(self, var: str, t: int, three_d: bool) -> np.ndarray:
+    def _read(self, var: str, t: int, three_d: bool, levels=None) -> np.ndarray:
         v = self.ds.variables[var]
         # Contiguous hyperslab first (fast), then fancy-index the subset.
         if three_d:
-            z0, z1 = int(self.iz.min()), int(self.iz.max()) + 1
+            iz = self.iz if levels is None else self.iz[np.asarray(levels)]
+            z0, z1 = int(iz.min()), int(iz.max()) + 1
             y0, y1 = int(self.iy.min()), int(self.iy.max()) + 1
             x0, x1 = int(self.ix.min()), int(self.ix.max()) + 1
             a = v[t, z0:z1, y0:y1, x0:x1]
             a = np.ma.filled(np.ma.asarray(a, np.float32), np.nan)
-            a = a[self.iz - z0][:, self.iy - y0][:, :, self.ix - x0]
+            a = a[iz - z0][:, self.iy - y0][:, :, self.ix - x0]
         else:
             y0, y1 = int(self.iy.min()), int(self.iy.max()) + 1
             x0, x1 = int(self.ix.min()), int(self.ix.max()) + 1
@@ -106,10 +107,11 @@ class GlorysMonth:
             a = a[self.iy - y0][:, self.ix - x0]
         return a
 
-    def read_day(self, day: date, names=None) -> dict:
+    def read_day(self, day: date, names=None, levels=None) -> dict:
         """{model var: physical field on the MODEL grid}, NaN where invalid.
         3D (L,h,w), 2D (h,w). names defaults to every GLORYS variable of the
-        config (vars3d and the non-forcing vars2d)."""
+        config (vars3d and the non-forcing vars2d); levels (indices into
+        grid.depth_m) reads only those levels of the 3D fields."""
         if day not in self.dates:
             raise KeyError(f"{day} is not in {self.path}")
         t = self.dates.index(day)
@@ -117,7 +119,7 @@ class GlorysMonth:
         want = names or [v for v in cfg.vars3d + cfg.vars2d if v not in cfg.forcing_vars]
         out = {}
         for v in want:
-            a = self._read(self.names[v], t, v in cfg.vars3d)
+            a = self._read(self.names[v], t, v in cfg.vars3d, levels)
             out[v] = coarsen_nan(a, cfg.coarsen)
         return out
 
